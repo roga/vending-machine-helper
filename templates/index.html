@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <title>販賣機小幫手</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- common -->
-    <link rel="icon" type="image/png" href="https://food.roga.tw/static/vending-machine.png" sizes="32x32">
-    <link rel="icon" type="image/png" href="https://food.roga.tw/static/vending-machine.png" sizes="16x16">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='vending-machine.png') }}" sizes="32x32">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='vending-machine.png') }}" sizes="16x16">
 
     <!-- Apple -->
-    <link rel="apple-touch-icon" href="https://food.roga.tw/static/vending-machine.png" sizes="180x180">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='vending-machine.png') }}" sizes="180x180">
 
     <!-- Android -->
-    <link rel="icon" type="image/png" sizes="192x192" href="https://food.roga.tw/static/vending-machine.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="https://food.roga.tw/static/vending-machine.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='vending-machine.png') }}">
+    <link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='vending-machine.png') }}">
 
     <style>
 
@@ -82,7 +82,7 @@
 <div class="container py-4">
     <div class="mb-4">
         <h1 class="d-flex align-items-center gap-2">
-            <img src="https://food.roga.tw/static/vending-machine.png?v=202504" alt="販賣機圖示" class="logo">
+            <img src="{{ url_for('static', filename='vending-machine.png') }}?v=202504" alt="販賣機圖示" class="logo">
             販賣機小幫手
         </h1>
         <div id="instruction" class="text-muted">
@@ -185,8 +185,7 @@
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
     let currentVid = null;
     let currentPrice = null;
@@ -196,200 +195,243 @@
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
+    function byId(id) {
+      return document.getElementById(id);
+    }
+
     function showMessage(text, type = 'warning', duration = 3456) {
-      $('#messageBox')
-        .removeClass()
-        .addClass(`alert alert-${type}`)
-        .text(text)
-        .removeClass('d-none');
-      setTimeout(() => $('#messageBox').addClass('d-none'), duration);
+      const messageBox = byId('messageBox');
+      messageBox.className = 'alert alert-' + type;
+      messageBox.textContent = text;
+      messageBox.classList.remove('d-none');
+      setTimeout(() => messageBox.classList.add('d-none'), duration);
     }
 
     function updateRegDisplay() {
       const code = localStorage.getItem('snack_code');
+      const regDisplay = byId('regDisplay');
+      const regWrapper = byId('regWrapper');
       if (code) {
         const masked = code.length <= 2 ? code : code[0] + '*'.repeat(code.length - 2) + code[code.length - 1];
-        $('#regDisplay').text(`零食序號：${masked}`);
-        $('#regWrapper').removeClass('d-none');
+        regDisplay.textContent = '零食序號：' + masked;
+        regWrapper.classList.remove('d-none');
       } else {
-        $('#regWrapper').addClass('d-none');
+        regWrapper.classList.add('d-none');
       }
     }
 
-    function loadAndDisplayBalance(code) {
-        $('#balanceValue').text('載入中...').addClass('blinking');
-        $('#balanceDisplay').removeClass('d-none');
+    async function loadAndDisplayBalance(code) {
+      const balanceValue = byId('balanceValue');
+      balanceValue.textContent = '載入中...';
+      balanceValue.classList.add('blinking');
+      byId('balanceDisplay').classList.remove('d-none');
 
-        $.getJSON(`https://food.roga.tw/balance?code=${encodeURIComponent(code)}`)
-            .done(data => {
-                $('#balanceValue')
-                    .removeClass('blinking')
-                    .text(typeof data.balance === 'number' ? `${data.balance} 點` : '查詢失敗'
-                    );
-            })
-            .fail(err => {
-                $('#balanceValue')
-                    .removeClass('blinking')
-                    .text('錯誤');
-                console.error('查詢餘額失敗:', err);
-            });
+      try {
+        const response = await fetch('/balance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ code })
+        });
+        if (!response.ok) throw new Error('balance request failed');
+        const data = await response.json();
+        if (typeof data.balance !== 'number') throw new Error('invalid balance');
+        balanceValue.textContent = data.balance + ' 點';
+      } catch (error) {
+        balanceValue.textContent = '查詢失敗';
+        console.error('查詢餘額失敗:', error);
+      } finally {
+        balanceValue.classList.remove('blinking');
+      }
     }
 
-    function startCamera() {
-      scanning = true;
-      $('#result').text("尚未掃描").hide();
-      $('#cameraLayer').removeClass('d-none');
+    function renderScanResult(vid, price) {
+      const result = byId('result');
+      result.replaceChildren();
+      result.append('販賣機：');
+      const machine = document.createElement('small');
+      machine.textContent = vid;
+      result.append(machine, document.createElement('br'), '價格：');
+      const amount = document.createElement('strong');
+      amount.textContent = String(price);
+      result.append(amount, ' 點');
+      result.style.display = 'block';
+    }
 
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then(s => {
-          stream = s;
-          $('#video')[0].srcObject = stream;
-          $('#video')[0].play();
-          requestAnimationFrame(scanLoop);
-        })
-        .catch(() => showMessage('⚠️ 無法啟用相機', 'warning'));
+    function renderScanError(text) {
+      const result = byId('result');
+      result.textContent = text;
+      result.style.display = 'block';
+    }
+
+    async function startCamera() {
+      scanning = true;
+      const result = byId('result');
+      result.textContent = '尚未掃描';
+      result.style.display = 'none';
+      byId('cameraLayer').classList.remove('d-none');
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        byId('video').srcObject = stream;
+        await byId('video').play();
+        requestAnimationFrame(scanLoop);
+      } catch (error) {
+        stopCamera();
+        showMessage('⚠️ 無法啟用相機', 'warning');
+      }
     }
 
     function stopCamera() {
       scanning = false;
       if (stream) stream.getTracks().forEach(track => track.stop());
-      $('#video')[0].srcObject = null;
-      $('#cameraLayer').addClass('d-none');
+      stream = null;
+      byId('video').srcObject = null;
+      byId('cameraLayer').classList.add('d-none');
+    }
+
+    async function handleQrCode(qrData) {
+      const match = qrData.match(/^https:\/\/pay\.yallvend\.com\/machineid\/([A-Za-z0-9._-]{1,128})$/);
+      if (!match) {
+        renderScanError('⚠️ 無法辨識的 QR Code：' + qrData);
+        return;
+      }
+
+      currentVid = match[1];
+      try {
+        const response = await fetch('/price?vid=' + encodeURIComponent(currentVid));
+        if (!response.ok) throw new Error('price request failed');
+        const data = await response.json();
+        if (!Object.prototype.hasOwnProperty.call(data, 'price')) throw new Error('invalid price');
+        currentPrice = data.price;
+        renderScanResult(currentVid, currentPrice);
+      } catch (error) {
+        currentPrice = null;
+        renderScanError('販賣機：' + currentVid + '，⚠️ 查詢價格失敗');
+      }
     }
 
     function scanLoop() {
       if (!scanning) return;
-
-      if ($('#video')[0].readyState === $('#video')[0].HAVE_ENOUGH_DATA) {
-        canvas.width = $('#video')[0].videoWidth;
-        canvas.height = $('#video')[0].videoHeight;
-        ctx.drawImage($('#video')[0], 0, 0, canvas.width, canvas.height);
+      const video = byId('video');
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
-
         if (code) {
-          const qrData = code.data;
-          const match = qrData.match(/^https:\/\/pay\.yallvend\.com\/machineid\/(.+)$/);
-          if (match) {
-            currentVid = match[1];
-            $.getJSON(`https://food.roga.tw/price?vid=${encodeURIComponent(currentVid)}`)
-              .done(data => {
-                currentPrice = data.price;
-                $('#result').html(`販賣機：<small>${currentVid}</small><br>價格：<strong>${currentPrice}</strong> 點`).show();
-              })
-              .fail(() => {
-                $('#result').html(`販賣機：${currentVid}<br>⚠️ 查詢價格失敗`).show();
-              });
-          } else {
-            $('#result').text(`⚠️ 無法辨識的 QR Code：${qrData}`).show();
-          }
-
+          handleQrCode(code.data);
           stopCamera();
-          $('#startScan').text('重新掃描');
-
-          if (!$('#buyButton').length) {
-            const buyBtn = $('<button id="buyButton" class="btn btn-warning flex-fill">購買</button>');
-            buyBtn.on('click', () => {
-              const snackCode = localStorage.getItem('snack_code');
-              if (!snackCode || !currentVid || !currentPrice) {
-                showMessage('⚠️ 請確認資料完整後再購買', 'danger');
-                return;
-              }
-
-              const $btn = $('#buyButton');
-                // 購買中
-              $btn.prop('disabled', true).text('購買中...');
-
-              $.ajax({
-                  url: 'https://food.roga.tw/pay',
-                  method: 'POST',
-                  data: {
-                      vid: currentVid,
-                      code: snackCode,
-                      price: currentPrice
-                  }
-              })
-              .done(() => {
-                  showMessage('✅ 購買成功！', 'success');
-                  $('#result').text('尚未掃描').hide();
-                  $('#startScan').text('掃描 QR Code');
-                  $btn.remove();
-                  // 重新整理餘額
-                  loadAndDisplayBalance(snackCode);
-              })
-              .fail(() => {
-                  showMessage('❌ 購買失敗', 'danger');
-                  $btn.prop('disabled', false).text('購買'); // 回復按鈕狀態
-              });
-            });
-            $('#actionButtons').append(buyBtn);
-          }
+          byId('startScan').textContent = '重新掃描';
+          addBuyButton();
           return;
         }
       }
       requestAnimationFrame(scanLoop);
     }
 
+    function addBuyButton() {
+      if (byId('buyButton')) return;
+      const buyButton = document.createElement('button');
+      buyButton.id = 'buyButton';
+      buyButton.className = 'btn btn-warning flex-fill';
+      buyButton.textContent = '購買';
+      buyButton.addEventListener('click', async () => {
+        const snackCode = localStorage.getItem('snack_code');
+        if (!snackCode || !currentVid || !currentPrice) {
+          showMessage('⚠️ 請確認資料完整後再購買', 'danger');
+          return;
+        }
+
+        buyButton.disabled = true;
+        buyButton.textContent = '購買中...';
+        try {
+          const response = await fetch('/pay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ vid: currentVid, code: snackCode })
+          });
+          const data = await response.json();
+          const status = String(data.result || '').toLowerCase();
+          if (!response.ok || !['success', 'ok', 'paid', 'completed', 'true', '1'].includes(status)) {
+            throw new Error('payment failed');
+          }
+          showMessage('✅ 購買成功！', 'success');
+          byId('result').textContent = '尚未掃描';
+          byId('result').style.display = 'none';
+          byId('startScan').textContent = '掃描 QR Code';
+          buyButton.remove();
+          loadAndDisplayBalance(snackCode);
+        } catch (error) {
+          showMessage('❌ 購買失敗', 'danger');
+          buyButton.disabled = false;
+          buyButton.textContent = '購買';
+        }
+      });
+      byId('actionButtons').append(buyButton);
+    }
+
     function openDisclaimerLayer() {
-      $('#disclaimerLayer').removeClass('d-none');
-      $('#closeDisclaimer').trigger('focus');
+      byId('disclaimerLayer').classList.remove('d-none');
+      byId('closeDisclaimer').focus();
     }
 
     function closeDisclaimerLayer() {
-      $('#disclaimerLayer').addClass('d-none');
+      byId('disclaimerLayer').classList.add('d-none');
     }
 
-    $(function () {
-      $('#openDisclaimer').on('click', (e) => {
-        e.preventDefault();
+    document.addEventListener('DOMContentLoaded', () => {
+      byId('openDisclaimer').addEventListener('click', event => {
+        event.preventDefault();
         openDisclaimerLayer();
       });
-      $('#closeDisclaimer').on('click', () => closeDisclaimerLayer());
-      $('#disclaimerLayer').on('click', (e) => {
-        if (e.target === e.currentTarget) closeDisclaimerLayer();
+      byId('closeDisclaimer').addEventListener('click', closeDisclaimerLayer);
+      byId('disclaimerLayer').addEventListener('click', event => {
+        if (event.target === event.currentTarget) closeDisclaimerLayer();
       });
-      $(document).on('keydown', (e) => {
-        if (e.key === 'Escape' && !$('#disclaimerLayer').hasClass('d-none')) {
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !byId('disclaimerLayer').classList.contains('d-none')) {
           closeDisclaimerLayer();
         }
       });
 
-      $('#saveReg').on('click', () => {
-        const code = $('#regCodeInput').val().trim();
+      byId('saveReg').addEventListener('click', () => {
+        const code = byId('regCodeInput').value.trim();
         if (code) {
           localStorage.setItem('snack_code', code);
-          $('#registration').addClass('d-none');
+          byId('registration').classList.add('d-none');
           updateRegDisplay();
           loadAndDisplayBalance(code);
-          $('#actionButtons').removeClass('d-none');
+          byId('actionButtons').classList.remove('d-none');
         } else {
           showMessage('⚠️ 請輸入有效的零食序號', 'warning');
         }
       });
 
-      $('#clearReg').on('click', () => {
+      byId('clearReg').addEventListener('click', () => {
         localStorage.removeItem('snack_code');
         location.reload();
       });
 
-      $('#startScan').on('click', () => {
-        $('#buyButton').remove();
+      byId('startScan').addEventListener('click', () => {
+        const buyButton = byId('buyButton');
+        if (buyButton) buyButton.remove();
+        currentVid = null;
+        currentPrice = null;
         startCamera();
       });
 
-      $('#cancelScan').on('click', () => {
-        stopCamera();
-      });
+      byId('cancelScan').addEventListener('click', stopCamera);
 
       const code = localStorage.getItem('snack_code');
       if (code) {
-        $('#registration').addClass('d-none');
+        byId('registration').classList.add('d-none');
         updateRegDisplay();
         loadAndDisplayBalance(code);
-        $('#actionButtons').removeClass('d-none');
+        byId('actionButtons').classList.remove('d-none');
       } else {
         updateRegDisplay();
-        $('#actionButtons').addClass('d-none');
+        byId('actionButtons').classList.add('d-none');
       }
     });
 </script>

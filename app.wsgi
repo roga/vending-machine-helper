@@ -1,8 +1,10 @@
 # app.wsgi
 import sys
 import logging
+from pathlib import Path
 
-sys.path.insert(0, "/var/www/food.roga.tw")
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
 
 from app import app as application
 

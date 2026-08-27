@@ -1,50 +1,93 @@
-# app.py
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+import os
+import re
 
 from dotenv import load_dotenv
-import os
-load_dotenv(dotenv_path="/var/www/food.roga.tw/.env") # load .env
+from flask import Flask, jsonify, render_template, request
 
-from flask import Flask, request, jsonify, render_template
-from flask_cors import CORS
-from payment_manager import PaymentManager
+from payment_manager import PaymentManager, PaymentManagerError
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 app = Flask(__name__)
-CORS(app)
+
+TOKEN_PATTERN = re.compile(r'^[A-Za-z0-9._-]{1,128}$')
+PAYMENT_SUCCESS_STATUSES = {'success', 'ok', 'paid', 'completed', 'true', '1'}
+
+
+def _get_input(name):
+    data = request.get_json(silent=True) or {}
+    return request.form.get(name) or data.get(name)
+
+
+def _valid_token(value):
+    return isinstance(value, str) and bool(TOKEN_PATTERN.fullmatch(value.strip()))
+
+
+def _valid_price(value):
+    try:
+        amount = Decimal(str(value))
+        return amount.is_finite() and amount > 0
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
 
 @app.route('/')
 def home():
     return render_template('index.html')
 
-@app.route('/balance', methods=['GET'])
+
+@app.route('/balance', methods=['POST'])
 def check_balance():
-    code = request.args.get('code')
-    if not code:
-        return jsonify({'error': 'Missing code'}), 400
-    pm = PaymentManager(code)
-    result = pm.get_balance()
-    return jsonify({'code': code, 'balance': result})
+    code = _get_input('code')
+    if not _valid_token(code):
+        return jsonify({'error': 'Invalid code'}), 400
+    code = code.strip()
+    try:
+        result = PaymentManager(code).get_balance()
+    except PaymentManagerError:
+        return jsonify({'error': 'Balance service unavailable'}), 502
+    return jsonify({'balance': result})
+
 
 @app.route('/price', methods=['GET'])
 def check_price():
-    vid = request.args.get('vid')
-    if not vid:
-        return jsonify({'error': 'Missing vending machine ID'}), 400
-    pm = PaymentManager('dummy')  # 不需要個人代碼也可查價格
-    result = pm.get_current_product_price(vid)
+    vid = request.args.get('vid', '').strip()
+    if not _valid_token(vid):
+        return jsonify({'error': 'Invalid vending machine ID'}), 400
+    try:
+        result = PaymentManager('dummy').get_current_product_price(vid)
+    except PaymentManagerError:
+        return jsonify({'error': 'Price service unavailable'}), 502
+    if not _valid_price(result):
+        return jsonify({'error': 'Invalid price response'}), 502
     return jsonify({'vid': vid, 'price': result})
+
 
 @app.route('/pay', methods=['POST'])
 def pay_product():
-    code = request.form.get('code')
-    vid = request.form.get('vid')
-    price = request.form.get('price')
-
-    if not all([code, vid, price]):
-        return jsonify({'error': 'Missing code, vid, or price'}), 400
+    code = _get_input('code')
+    vid = _get_input('vid')
+    if not _valid_token(code) or not _valid_token(vid):
+        return jsonify({'error': 'Invalid code or vending machine ID'}), 400
+    code = code.strip()
+    vid = vid.strip()
 
     pm = PaymentManager(code)
-    result = pm.pay(price, vid)
-    return jsonify({'code': code, 'vid': vid, 'price': price, 'result': result})
+    try:
+        price = pm.get_current_product_price(vid)
+        if not _valid_price(price):
+            raise PaymentManagerError('Invalid price response')
+        result = str(pm.pay(price, vid)).lower()
+    except PaymentManagerError:
+        return jsonify({'error': 'Payment service unavailable'}), 502
+
+    if result not in PAYMENT_SUCCESS_STATUSES:
+        return jsonify({'error': 'Payment failed'}), 502
+    return jsonify({'vid': vid, 'price': price, 'result': result})
+
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=os.environ.get('FLASK_DEBUG') == '1')

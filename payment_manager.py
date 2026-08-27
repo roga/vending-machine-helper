@@ -1,6 +1,11 @@
-import os
 import json
+import os
 import requests
+
+
+class PaymentManagerError(Exception):
+    """Raised when a Yallvend request cannot be completed safely."""
+
 
 class PaymentManager:
     def __init__(self, personal_code):
@@ -15,23 +20,34 @@ class PaymentManager:
         self._api_key_balance = os.environ.get('YALLVEND_API_KEY')
         self._api_key_price = os.environ.get('YALLVEND_PRICE_KEY')
 
+    @staticmethod
+    def _post_json(url, **kwargs):
+        if not url:
+            raise PaymentManagerError('外部服務未設定')
+        try:
+            response = requests.post(url, timeout=5, **kwargs)
+            response.raise_for_status()
+            result = response.json()
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            raise PaymentManagerError('外部服務暫時無法使用') from exc
+        if not isinstance(result, dict):
+            raise PaymentManagerError('外部服務回應格式錯誤')
+        return result
+
     def get_balance(self):
-        headers = {
-            'Content-Type': 'application/json',
-            'Referer': self._api_get_balance_referer
-        }
+        headers = {'Content-Type': 'application/json'}
+        if self._api_get_balance_referer:
+            headers['Referer'] = self._api_get_balance_referer
         payload = {
             'country': 'tw',
             'key': self._api_key_balance,
             'id': self.personal_code
         }
+        result = self._post_json(self._api_get_balance_url, json=payload, headers=headers)
         try:
-            response = requests.post(self._api_get_balance_url, json=payload, headers=headers, timeout=5)
-            response.raise_for_status()
-            result = response.json()
-            return int(float(result.get('point', 0)))
-        except Exception as e:
-            return {"error": str(e)}
+            return int(float(result['point']))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PaymentManagerError('外部服務回應格式錯誤') from exc
 
     def get_current_product_price(self, vid):
         form_data = {
@@ -39,13 +55,10 @@ class PaymentManager:
             'func': 'loadDefaultAmount',
             'vidCode': vid
         }
-        try:
-            response = requests.post(self._api_product_price_url, data=form_data, timeout=5)
-            response.raise_for_status()
-            result = response.json()
-            return result.get('defaultAmount', 0)
-        except Exception as e:
-            return {"error": str(e)}
+        result = self._post_json(self._api_product_price_url, data=form_data)
+        if 'defaultAmount' not in result:
+            raise PaymentManagerError('外部服務回應格式錯誤')
+        return result['defaultAmount']
 
     def pay(self, price, vid):
         data = {
@@ -56,16 +69,16 @@ class PaymentManager:
             'haveAuth': False
         }
 
-        encoded_data = "data=" + requests.utils.quote(json.dumps(data))
-
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Referer': self._api_payment_referer_base + vid
         }
-        try:
-            response = requests.post(self._api_payment_url, data=encoded_data, headers=headers, timeout=5)
-            response.raise_for_status()
-            result = response.json()
-            return result.get('status', 'unknown')
-        except Exception as e:
-            return {"error": str(e)}
+        if self._api_payment_referer_base:
+            headers['Referer'] = self._api_payment_referer_base + vid
+        result = self._post_json(
+            self._api_payment_url,
+            data={'data': json.dumps(data)},
+            headers=headers
+        )
+        if 'status' not in result:
+            raise PaymentManagerError('外部服務回應格式錯誤')
+        return result['status']
