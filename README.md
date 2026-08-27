@@ -202,3 +202,13 @@ curl --fail http://127.0.0.1:5000/
 ```bash
 deactivate
 ```
+
+## About
+
+This project is a tribute to https://github.com/happydenn/linereats
+
+## Author
+
+roga &lt;roga@roga.tw&gt;
+
+Created in 2026.
