@@ -36,18 +36,17 @@ apache2ctl -v
 ## 2. 部署專案檔案
 
 ```bash
-sudo mkdir -p /var/www/example.com
-sudo git clone https://github.com/roga/vending-machine-helper.git /var/www/example.com
-sudo chown -R "$USER":www-data /var/www/example.com
-sudo find /var/www/example.com -type d -exec chmod 750 {} \;
-sudo find /var/www/example.com -type f -exec chmod 640 {} \;
+sudo install -d -o "$USER" -g www-data -m 750 /var/www/example.com
+git clone https://github.com/roga/vending-machine-helper.git /var/www/example.com
+find /var/www/example.com -type d -exec chmod 750 {} \;
+find /var/www/example.com -type f -exec chmod 640 {} \;
 ```
 
 如果目錄已經是既有 checkout，請改為：
 
 ```bash
 cd /var/www/example.com
-sudo git pull --ff-only
+git pull --ff-only
 ```
 
 ## 3. 建立虛擬環境與安裝依賴
@@ -56,10 +55,10 @@ sudo git pull --ff-only
 
 ```bash
 cd /var/www/example.com
-sudo python3 -m venv venv
-sudo venv/bin/python -m pip install --upgrade pip
-sudo venv/bin/python -m pip install -r requirements.txt
-sudo venv/bin/python -c "import flask, requests, dotenv; print('Python dependencies: OK')"
+python3 -m venv venv
+venv/bin/python -m pip install --upgrade pip
+venv/bin/python -m pip install -r requirements.txt
+venv/bin/python -c "import flask, requests, dotenv; print('Python dependencies: OK')"
 ```
 
 ## 4. 設定 Yallvend 環境變數
@@ -68,8 +67,8 @@ sudo venv/bin/python -c "import flask, requests, dotenv; print('Python dependenc
 
 ```bash
 cd /var/www/example.com
-sudo cp .env.example .env
-sudoedit .env
+cp .env.example .env
+${EDITOR:-vi} .env
 sudo chown root:www-data .env
 sudo chmod 640 .env
 ```
@@ -146,8 +145,8 @@ sudo certbot renew --dry-run
 
 ```bash
 cd /var/www/example.com
-sudo git pull --ff-only
-sudo venv/bin/python -m pip install -r requirements.txt
+git pull --ff-only
+venv/bin/python -m pip install -r requirements.txt
 sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
