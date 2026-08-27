@@ -1,7 +1,7 @@
 # url
 
-- 網址： https://example.com/
-- iPhone 使用 Safari 開啟後按「分享」選擇「加入主畫面」即可新增本網站為桌面圖示
+- 專案實際網址： https://food.roga.tw
+- iPhone 使用 Safari 開啟連結後按「分享」選擇「加入主畫面」即可新增本網站為桌面圖示
 
 # vending-machine-helper
 
