@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 import os
 import re
 
@@ -7,7 +8,8 @@ from flask import Flask, jsonify, render_template, request
 
 from payment_manager import PaymentManager, PaymentManagerError
 
-load_dotenv(dotenv_path="/var/www/food.roga.tw/.env")
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 app = Flask(__name__)
 
