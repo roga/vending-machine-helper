@@ -19,9 +19,56 @@
 # production env
 
 - Apache + mod_wsgi
+- mod_wsgi 必須使用與正式主機相符的 Python 3.11 版本建置
+
+# restart server
+
+sudo systemctl restart apache2
 
 # development env
 
-- python3 -m venv venv
-- source venv/bin/activate
-- pip install -r requirements.txt
+請先在專案根目錄執行以下指令。正式的 Yallvend 設定與零食序號不要提交到 Git。
+
+```bash
+# 進入專案目錄（請替換成你的本機路徑）
+cd /path/to/vending-machine-helper
+
+# 確認本機使用 Python 3.11
+python3.11 --version
+
+# 建立並啟用虛擬環境
+python3.11 -m venv venv
+source venv/bin/activate
+
+# 安裝專案依賴
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+# 執行測試（不會呼叫正式服務）
+python -m unittest discover -s tests -v
+
+# 若要測試餘額、價格或付款 API，先建立本機設定檔並填入實際測試設定
+cp -n .env.example .env
+${EDITOR:-vi} .env
+
+# 將 .env 載入目前 shell；請確認檔案內沒有未替換的 PLACEHOLDER
+set -a
+source .env
+set +a
+
+# 啟動本機 Flask 服務
+export FLASK_DEBUG=1
+python app.py
+```
+
+服務啟動後會監聽 `http://127.0.0.1:5000`。請保留這個終端機讓服務持續執行，再開另一個終端機驗證首頁：
+
+```bash
+curl --fail http://127.0.0.1:5000/
+```
+
+停止服務請在執行中的終端機按 `Ctrl-C`；離開虛擬環境則執行：
+
+```bash
+deactivate
+```
